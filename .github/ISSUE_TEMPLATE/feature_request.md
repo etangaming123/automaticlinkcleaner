@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Want to see something in etan bot?
+about: Want to see something in Automatic Link Cleaner?
 title: "[REQ]"
 labels: ''
 assignees: ''
