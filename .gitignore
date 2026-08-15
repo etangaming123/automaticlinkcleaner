@@ -1,0 +1,10 @@
+config.json
+*.json
+!package.json
+__pycache__/
+*.pyc
+venv/
+.venv/
+*.code-workspace
+.*DS_Store
+.vscode
