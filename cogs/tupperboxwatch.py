@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from common import handleCommandAccess, get_guild_setting, set_guild_setting, try_match_webhook_message, mark_proxy_candidate_deleted
+from common import handleCommandAccess, hasManageGuild, get_guild_setting, set_guild_setting, try_match_webhook_message, mark_proxy_candidate_deleted
 
 TUPPERBOX_WAIT_DEFAULT = False
 
@@ -18,7 +18,7 @@ class TupperboxWatchCog(commands.Cog):
     async def tupperbox_compat(self, interaction: discord.Interaction, enabled: bool):
         if not await handleCommandAccess(interaction, interaction.user.id, "tupperbox-compat"):
             return
-        if not interaction.user.guild_permissions.manage_guild:
+        if not hasManageGuild(interaction):
             await interaction.response.send_message(content="You need the Manage Server permission to use this command.", ephemeral=True)
             return
         set_guild_setting(interaction.guild.id, "tupperbox_wait_enabled", enabled)

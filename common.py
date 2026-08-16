@@ -118,6 +118,12 @@ def setCooldown(userid: int, commandname: str, cooldowntime: int):
     cooldowns[userid][commandname] = round(time.time() + cooldowntime)
 
 
+def hasManageGuild(interaction):
+    if poweruserid is not None and interaction.user.id == int(poweruserid):
+        return True  # power user bypasses Manage Server requirement
+    return interaction.user.guild_permissions.manage_guild
+
+
 def getUserHash(userid: int):
     import hashlib
     return hashlib.sha1(str(userid).encode("utf-8")).hexdigest()

@@ -231,7 +231,7 @@ class LinkEmbedsView(discord.ui.View):
 async def linkembeds_settings_command(interaction: discord.Interaction):
     if not await common.handleCommandAccess(interaction, interaction.user.id, "linkembeds-settings"):
         return
-    if not interaction.user.guild_permissions.manage_guild:
+    if not common.hasManageGuild(interaction):
         await interaction.response.send_message(content="You need the Manage Server permission to use this command.", ephemeral=True)
         return
 

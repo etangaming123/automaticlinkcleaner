@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from common import handleCommandAccess, setCooldown, cleanLink, cleanLinkV2, cleanTiktokLink, DEFAULT_TRACKER_PARAMS, get_guild_setting, set_guild_setting, get_user_setting, set_user_setting, safe_respond, wait_for_tupperbox_proxy
+from common import handleCommandAccess, hasManageGuild, setCooldown, cleanLink, cleanLinkV2, cleanTiktokLink, DEFAULT_TRACKER_PARAMS, get_guild_setting, set_guild_setting, get_user_setting, set_user_setting, safe_respond, wait_for_tupperbox_proxy
 from cogs.linkembeds import URL_PATTERN, get_guild_config as get_linkembeds_config, find_platform_links
 
 AUTO_CLEAN_DEFAULT = True
@@ -171,7 +171,7 @@ class linkCleanerCog(commands.Cog):
     async def auto_clean_links(self, interaction: discord.Interaction, enabled: bool):
         if not await handleCommandAccess(interaction, interaction.user.id, "auto-clean-links"):
             return
-        if not interaction.user.guild_permissions.manage_guild:
+        if not hasManageGuild(interaction):
             await interaction.response.send_message(content="You need the Manage Server permission to use this command.", ephemeral=True)
             return
         set_guild_setting(interaction.guild.id, "linkcleaner_auto_enabled", enabled)
