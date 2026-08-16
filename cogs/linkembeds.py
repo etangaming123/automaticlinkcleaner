@@ -293,5 +293,6 @@ class LinkEmbeds(commands.Cog):
 
 
 async def setup(bot: commands.Bot):
+    common.migrate_guild_settings(DEFAULT_GUILD_SETTINGS)
     await bot.add_cog(LinkEmbeds(bot))
     bot.tree.add_command(linkembeds_settings_command)

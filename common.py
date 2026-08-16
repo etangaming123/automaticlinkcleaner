@@ -226,6 +226,33 @@ def set_guild_setting(guild_id: int, key: str, value) -> bool:
     return saved
 
 
+def migrate_guild_settings(defaults: dict) -> bool:
+    """Backfills missing keys (with their defaults) into every guild's existing settings entry.
+
+    Cogs should call this from their setup() with their own {key: default} mapping, so that
+    guildsettings.json gets updated to include new settings as they're added in future updates,
+    instead of relying only on get_guild_setting()'s per-call default fallback. Never overwrites
+    an existing value, and never creates entries for guilds with no settings yet.
+    """
+    settings = getGuildSettings()
+    if settings == "" or not isinstance(settings, dict):
+        return False
+    changed = False
+    for guild_settings in settings.values():
+        if not isinstance(guild_settings, dict):
+            continue
+        for key, default in defaults.items():
+            if key not in guild_settings:
+                guild_settings[key] = default
+                changed = True
+    if not changed:
+        return True
+    saved = saveData("guildsettings", settings)
+    if saved:
+        getGuildSettings(refresh=True)
+    return saved
+
+
 DEFAULT_TRACKER_PARAMS = ["igsh", "si", "fbclid", "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "is", "mibextid", "gclid", "dclid", "is_from_webapp", "sender_device", "_t", "_r", "t", "igsi"]
 
 

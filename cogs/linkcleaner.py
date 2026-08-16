@@ -2,10 +2,14 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from common import handleCommandAccess, hasManageGuild, setCooldown, cleanLink, cleanLinkV2, cleanTiktokLink, DEFAULT_TRACKER_PARAMS, get_guild_setting, set_guild_setting, get_user_setting, set_user_setting, safe_respond, wait_for_tupperbox_proxy
+from common import handleCommandAccess, hasManageGuild, setCooldown, cleanLink, cleanLinkV2, cleanTiktokLink, DEFAULT_TRACKER_PARAMS, get_guild_setting, set_guild_setting, get_user_setting, set_user_setting, safe_respond, wait_for_tupperbox_proxy, migrate_guild_settings
 from cogs.linkembeds import URL_PATTERN, get_guild_config as get_linkembeds_config, find_platform_links
 
 AUTO_CLEAN_DEFAULT = True
+
+DEFAULT_GUILD_SETTINGS = {
+    "linkcleaner_auto_enabled": AUTO_CLEAN_DEFAULT,
+}
 
 DEFAULT_USER_SETTINGS = {
     "linkcleaner_extra_blacklist": [],
@@ -318,4 +322,5 @@ class linkCleanerCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot):
+    migrate_guild_settings(DEFAULT_GUILD_SETTINGS)
     await bot.add_cog(linkCleanerCog(bot))

@@ -2,9 +2,13 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from common import handleCommandAccess, hasManageGuild, get_guild_setting, set_guild_setting, try_match_webhook_message, mark_proxy_candidate_deleted
+from common import handleCommandAccess, hasManageGuild, get_guild_setting, set_guild_setting, try_match_webhook_message, mark_proxy_candidate_deleted, migrate_guild_settings
 
 TUPPERBOX_WAIT_DEFAULT = False
+
+DEFAULT_GUILD_SETTINGS = {
+    "tupperbox_wait_enabled": TUPPERBOX_WAIT_DEFAULT,
+}
 
 
 class TupperboxWatchCog(commands.Cog):
@@ -40,4 +44,5 @@ class TupperboxWatchCog(commands.Cog):
 
 
 async def setup(bot: commands.Bot):
+    migrate_guild_settings(DEFAULT_GUILD_SETTINGS)
     await bot.add_cog(TupperboxWatchCog(bot))
