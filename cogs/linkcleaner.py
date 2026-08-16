@@ -2,10 +2,162 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from common import handleCommandAccess, setCooldown, cleanLink, cleanLinkV2, cleanTiktokLink, DEFAULT_TRACKER_PARAMS, get_guild_setting, set_guild_setting
+from common import handleCommandAccess, setCooldown, cleanLink, cleanLinkV2, cleanTiktokLink, DEFAULT_TRACKER_PARAMS, get_guild_setting, set_guild_setting, get_user_setting, set_user_setting, safe_respond
 from cogs.linkembeds import URL_PATTERN, get_guild_config as get_linkembeds_config, find_platform_links
 
 AUTO_CLEAN_DEFAULT = True
+
+DEFAULT_USER_SETTINGS = {
+    "linkcleaner_extra_blacklist": [],
+    "linkcleaner_extra_whitelist": [],
+    "linkcleaner_apply_to_autoclean": False,
+}
+
+
+def get_user_config(user_id: int):
+    return {key: get_user_setting(user_id, key, default) for key, default in DEFAULT_USER_SETTINGS.items()}
+
+
+class AddExtraParamModal(discord.ui.Modal):
+    params = discord.ui.TextInput(
+        label="Parameter name(s)",
+        placeholder="utm_source, utm_campaign, ...",
+        style=discord.TextStyle.short,
+        required=True,
+        max_length=200,
+    )
+
+    def __init__(self, view: "LinkCleanerSettingsView", setting_key: str, title: str):
+        super().__init__(title=title)
+        self.view_ref = view
+        self.setting_key = setting_key
+
+    async def on_submit(self, interaction: discord.Interaction):
+        config = get_user_config(self.view_ref.user_id)
+        plist = list(config[self.setting_key])
+        added = []
+        for raw in self.params.value.split(","):
+            name = raw.strip()
+            if name and name not in plist:
+                plist.append(name)
+                added.append(name)
+        if added:
+            set_user_setting(self.view_ref.user_id, self.setting_key, plist)
+        await self.view_ref.refresh(interaction)
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception):
+        print(f"Error adding link-cleaner param(s): {error}")
+        try:
+            await interaction.response.send_message(content="Failed to add the parameter(s).", ephemeral=True)
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+
+class LinkCleanerSettingsView(discord.ui.View):
+    def __init__(self, user_id: int, timeout: float = 300):
+        super().__init__(timeout=timeout)
+        self.user_id = user_id
+        self.message: discord.Message | None = None
+        self._update_state()
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(content="This isn't your settings panel.", ephemeral=True)
+            return False
+        return True
+
+    async def on_timeout(self):
+        for item in self.children:
+            item.disabled = True
+        if self.message is not None:
+            try:
+                await self.message.edit(content="Settings panel timed out. Run the command again to make more changes.", embed=self.build_embed(), view=self)
+            except (discord.Forbidden, discord.HTTPException) as e:
+                print(f"Error disabling link-cleaner settings panel on timeout: {e}")
+
+    def _config(self):
+        return get_user_config(self.user_id)
+
+    def build_embed(self) -> discord.Embed:
+        config = self._config()
+        embed = discord.Embed(title="Your Personal Link-Cleaner Settings", color=discord.Color.blurple())
+        embed.add_field(name="Apply to Auto-Clean", value="Yes" if config["linkcleaner_apply_to_autoclean"] else "No", inline=False)
+        embed.add_field(name="Extra Blacklist Params (used in /clean-link)", value=", ".join(f"`{p}`" for p in config["linkcleaner_extra_blacklist"]) if config["linkcleaner_extra_blacklist"] else "*empty*", inline=False)
+        embed.add_field(name="Extra Whitelist Params (used in /clean-link-v2)", value=", ".join(f"`{p}`" for p in config["linkcleaner_extra_whitelist"]) if config["linkcleaner_extra_whitelist"] else "*empty*", inline=False)
+        return embed
+
+    def _update_state(self):
+        config = self._config()
+        self.toggle_apply_autoclean.style = discord.ButtonStyle.success if config["linkcleaner_apply_to_autoclean"] else discord.ButtonStyle.secondary
+        self.toggle_apply_autoclean.label = f"Apply to Auto-Clean: {'On' if config['linkcleaner_apply_to_autoclean'] else 'Off'}"
+
+        blacklist = config["linkcleaner_extra_blacklist"][:25]
+        if blacklist:
+            self.blacklist_select.options = [discord.SelectOption(label=p, value=p) for p in blacklist]
+            self.blacklist_select.disabled = False
+            self.blacklist_select.placeholder = "Select blacklist param(s) to remove..."
+            self.blacklist_select.max_values = len(blacklist)
+        else:
+            self.blacklist_select.options = [discord.SelectOption(label="(none)", value="__none__")]
+            self.blacklist_select.disabled = True
+            self.blacklist_select.placeholder = "No extra blacklist params configured"
+            self.blacklist_select.max_values = 1
+
+        whitelist = config["linkcleaner_extra_whitelist"][:25]
+        if whitelist:
+            self.whitelist_select.options = [discord.SelectOption(label=p, value=p) for p in whitelist]
+            self.whitelist_select.disabled = False
+            self.whitelist_select.placeholder = "Select whitelist param(s) to remove..."
+            self.whitelist_select.max_values = len(whitelist)
+        else:
+            self.whitelist_select.options = [discord.SelectOption(label="(none)", value="__none__")]
+            self.whitelist_select.disabled = True
+            self.whitelist_select.placeholder = "No extra whitelist params configured"
+            self.whitelist_select.max_values = 1
+
+    async def refresh(self, interaction: discord.Interaction):
+        self._update_state()
+        await safe_respond(interaction, embed=self.build_embed(), view=self)
+
+    @discord.ui.button(label="Apply to Auto-Clean: Off", style=discord.ButtonStyle.secondary, row=0)
+    async def toggle_apply_autoclean(self, interaction: discord.Interaction, button: discord.ui.Button):
+        config = self._config()
+        set_user_setting(self.user_id, "linkcleaner_apply_to_autoclean", not config["linkcleaner_apply_to_autoclean"])
+        await self.refresh(interaction)
+
+    @discord.ui.select(placeholder="No extra blacklist params configured", min_values=1, max_values=1, options=[discord.SelectOption(label="(none)", value="__none__")], row=1)
+    async def blacklist_select(self, interaction: discord.Interaction, select: discord.ui.Select):
+        if select.values == ["__none__"]:
+            await interaction.response.defer()
+            return
+        config = self._config()
+        plist = [p for p in config["linkcleaner_extra_blacklist"] if p not in select.values]
+        set_user_setting(self.user_id, "linkcleaner_extra_blacklist", plist)
+        await self.refresh(interaction)
+
+    @discord.ui.select(placeholder="No extra whitelist params configured", min_values=1, max_values=1, options=[discord.SelectOption(label="(none)", value="__none__")], row=2)
+    async def whitelist_select(self, interaction: discord.Interaction, select: discord.ui.Select):
+        if select.values == ["__none__"]:
+            await interaction.response.defer()
+            return
+        config = self._config()
+        plist = [p for p in config["linkcleaner_extra_whitelist"] if p not in select.values]
+        set_user_setting(self.user_id, "linkcleaner_extra_whitelist", plist)
+        await self.refresh(interaction)
+
+    @discord.ui.button(label="Add Blacklist Param", style=discord.ButtonStyle.secondary, row=3)
+    async def add_blacklist_param(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            await interaction.response.send_modal(AddExtraParamModal(self, "linkcleaner_extra_blacklist", "Add Extra Blacklist Parameter(s)"))
+        except (discord.Forbidden, discord.HTTPException) as e:
+            print(f"Error opening add-blacklist-param modal: {e}")
+
+    @discord.ui.button(label="Add Whitelist Param", style=discord.ButtonStyle.secondary, row=3)
+    async def add_whitelist_param(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            await interaction.response.send_modal(AddExtraParamModal(self, "linkcleaner_extra_whitelist", "Add Extra Whitelist Parameter(s)"))
+        except (discord.Forbidden, discord.HTTPException) as e:
+            print(f"Error opening add-whitelist-param modal: {e}")
 
 
 class linkCleanerCog(commands.Cog):
@@ -24,6 +176,17 @@ class linkCleanerCog(commands.Cog):
             return
         set_guild_setting(interaction.guild.id, "linkcleaner_auto_enabled", enabled)
         await interaction.response.send_message(content=f"Automatic link tracker removal is now {'enabled' if enabled else 'disabled'}.", ephemeral=True)
+
+    @app_commands.command(name="clean-link-settings", description="Manage your personal extra link-cleaner parameters (applies across all servers)")
+    async def clean_link_settings(self, interaction: discord.Interaction):
+        if not await handleCommandAccess(interaction, interaction.user.id, "clean-link-settings"):
+            return
+        view = LinkCleanerSettingsView(interaction.user.id)
+        try:
+            await interaction.response.send_message(embed=view.build_embed(), view=view, ephemeral=True)
+            view.message = await interaction.original_response()
+        except (discord.Forbidden, discord.HTTPException) as e:
+            print(f"Error opening link-cleaner settings panel: {e}")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -44,7 +207,10 @@ class linkCleanerCog(commands.Cog):
             if url in seen or url in special_urls:
                 continue
             seen.add(url)
-            cleaned = cleanLink(url, list(DEFAULT_TRACKER_PARAMS))
+            toremove = list(DEFAULT_TRACKER_PARAMS)
+            if get_user_setting(message.author.id, "linkcleaner_apply_to_autoclean", False):
+                toremove.extend(get_user_setting(message.author.id, "linkcleaner_extra_blacklist", []))
+            cleaned = cleanLink(url, toremove)
             if cleaned != url:
                 cleaned_links.append(cleaned)
 
@@ -80,6 +246,7 @@ class linkCleanerCog(commands.Cog):
             await interaction.edit_original_response(content="There's no way that's a real link. [Please enter a valid URL under 2000 characters.]")
             return
         toremove = list(DEFAULT_TRACKER_PARAMS)
+        toremove.extend(get_user_setting(interaction.user.id, "linkcleaner_extra_blacklist", []))
         if additional:
             toremove.extend(additional.split(","))
         cleaned_link = cleanLink(link, toremove)
@@ -117,6 +284,7 @@ class linkCleanerCog(commands.Cog):
             return
         defaultwhitelist = []
         whitelist_list = whitelist.split(",") if whitelist else defaultwhitelist
+        whitelist_list.extend(get_user_setting(interaction.user.id, "linkcleaner_extra_whitelist", []))
         if "steamcommunity.com" in link:
             whitelist_list.append("id")  # id for sharedfiles
         if "youtube.com" in link or "youtu.be" in link:

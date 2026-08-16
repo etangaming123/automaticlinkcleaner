@@ -2,6 +2,7 @@ import json
 import os
 import time
 import requests
+import discord
 
 # more options
 enablecooldowns = True
@@ -162,6 +163,24 @@ async def handleCommandAccess(interaction, userid: int, commandname: str = None)
             return False
 
     return True
+
+
+async def safe_respond(interaction, **kwargs):
+    """edit_message/send_message wrapper that swallows permission/HTTP failures instead of crashing the interaction."""
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(ephemeral=True, **{k: v for k, v in kwargs.items() if k in ("content", "embed")})
+        else:
+            await interaction.response.edit_message(**kwargs)
+    except (discord.Forbidden, discord.HTTPException) as e:
+        print(f"Error updating settings panel: {e}")
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(content="Something went wrong updating the panel (missing permissions?).", ephemeral=True)
+            else:
+                await interaction.followup.send(content="Something went wrong updating the panel (missing permissions?).", ephemeral=True)
+        except (discord.Forbidden, discord.HTTPException):
+            pass
 
 
 def get_user_setting(user_id: int, key: str, default=None):

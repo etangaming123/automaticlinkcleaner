@@ -71,24 +71,6 @@ def build_replacement_links(url: str, platform_key: str, param_mode: str, param_
     return cleaned, fixed
 
 
-async def _safe_respond(interaction: discord.Interaction, **kwargs):
-    """edit_message/send_message wrapper that swallows permission/HTTP failures instead of crashing the interaction."""
-    try:
-        if interaction.response.is_done():
-            await interaction.followup.send(ephemeral=True, **{k: v for k, v in kwargs.items() if k in ("content", "embed")})
-        else:
-            await interaction.response.edit_message(**kwargs)
-    except (discord.Forbidden, discord.HTTPException) as e:
-        print(f"Error updating linkembeds settings panel: {e}")
-        try:
-            if not interaction.response.is_done():
-                await interaction.response.send_message(content="Something went wrong updating the panel (missing permissions?).", ephemeral=True)
-            else:
-                await interaction.followup.send(content="Something went wrong updating the panel (missing permissions?).", ephemeral=True)
-        except (discord.Forbidden, discord.HTTPException):
-            pass
-
-
 class AddParamModal(discord.ui.Modal, title="Add Tracker Parameter(s)"):
     params = discord.ui.TextInput(
         label="Parameter name(s)",
@@ -186,7 +168,7 @@ class LinkEmbedsView(discord.ui.View):
 
     async def refresh(self, interaction: discord.Interaction):
         self._update_state()
-        await _safe_respond(interaction, embed=self.build_embed(), view=self)
+        await common.safe_respond(interaction, embed=self.build_embed(), view=self)
 
     @discord.ui.button(label="Enabled: Off", style=discord.ButtonStyle.secondary, row=0)
     async def toggle_enabled(self, interaction: discord.Interaction, button: discord.ui.Button):
