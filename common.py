@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import time
@@ -264,3 +265,60 @@ def cleanTiktokLink(url):  # mfw vt.tiktok.com links
     actuallink = response.url
     cleaned_link = cleanLink(actuallink, "*")
     return f"We are using a different method to remove trackers from this link, as this tiktok link has embedded trackers: {cleaned_link}"
+
+TUPPERBOX_WAIT_TIMEOUT = 3.0 # amount of time to wait for a Tupperbox proxy to show up before giving up and returning the original message
+
+_pending_proxy_candidates = {}  # message_id -> {"channel_id", "content_normalized", "future", "deleted"}
+
+
+def _normalize(s: str) -> str:
+    return "".join(s.split()).lower()
+
+
+def register_proxy_wait(message: discord.Message) -> "asyncio.Future":
+    fut = asyncio.get_event_loop().create_future()
+    _pending_proxy_candidates[message.id] = {
+        "channel_id": message.channel.id,
+        "content_normalized": _normalize(message.content),
+        "future": fut,
+        "deleted": False,
+    }
+    return fut
+
+
+def try_match_webhook_message(webhook_message: discord.Message):
+    """Called by tupperboxwatch for every webhook message; resolves a matching pending candidate, if any."""
+    webhook_normalized = _normalize(webhook_message.content)
+    if not webhook_normalized:
+        return
+    for message_id, candidate in list(_pending_proxy_candidates.items()):
+        if candidate["future"].done() or candidate["channel_id"] != webhook_message.channel.id:
+            continue
+        if webhook_normalized in candidate["content_normalized"]:
+            candidate["future"].set_result(webhook_message)
+            del _pending_proxy_candidates[message_id]
+            return
+
+
+def mark_proxy_candidate_deleted(message_id: int):
+    """Called by tupperboxwatch when a message is deleted, so a timed-out wait can tell
+    'never proxied' apart from 'proxied but no matching webhook message showed up'."""
+    candidate = _pending_proxy_candidates.get(message_id)
+    if candidate is not None:
+        candidate["deleted"] = True
+
+
+async def wait_for_tupperbox_proxy(message: discord.Message, timeout: float = TUPPERBOX_WAIT_TIMEOUT):
+    """Waits briefly for a Tupperbox proxy of `message` to show up.
+
+    Returns the matching webhook message if one was found, the original `message` if it
+    never got proxied, or None if it was deleted with no matching webhook message found.
+    """
+    future = register_proxy_wait(message)
+    try:
+        return await asyncio.wait_for(future, timeout=timeout)
+    except asyncio.TimeoutError:
+        candidate = _pending_proxy_candidates.pop(message.id, None)
+        if candidate is not None and candidate["deleted"]:
+            return None
+        return message

@@ -16,7 +16,7 @@ if not os.path.exists("config.json"):
         json.dump({"token": "your token here", "poweruserid": "your user id here (for certain commands)"}, f, indent=4)
     input("Created config.json with default values. Please edit the file with your bot token and user id, then press enter to continue...")
 
-cogs = ["linkcleaner", "linkembeds", "guide"]
+cogs = ["linkcleaner", "linkembeds", "tupperboxwatch", "guide"]
 
 print("Loading additional commands...")
 

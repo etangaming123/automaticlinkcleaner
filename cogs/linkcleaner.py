@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from common import handleCommandAccess, setCooldown, cleanLink, cleanLinkV2, cleanTiktokLink, DEFAULT_TRACKER_PARAMS, get_guild_setting, set_guild_setting, get_user_setting, set_user_setting, safe_respond
+from common import handleCommandAccess, setCooldown, cleanLink, cleanLinkV2, cleanTiktokLink, DEFAULT_TRACKER_PARAMS, get_guild_setting, set_guild_setting, get_user_setting, set_user_setting, safe_respond, wait_for_tupperbox_proxy
 from cogs.linkembeds import URL_PATTERN, get_guild_config as get_linkembeds_config, find_platform_links
 
 AUTO_CLEAN_DEFAULT = True
@@ -217,8 +217,14 @@ class linkCleanerCog(commands.Cog):
         if not cleaned_links:
             return
 
+        target_message = message
+        if get_guild_setting(message.guild.id, "tupperbox_wait_enabled", False):
+            target_message = await wait_for_tupperbox_proxy(message)
+            if target_message is None:  # original was deleted (presumably by Tupperbox) and no matching webhook message showed up
+                return
+
         try:
-            await message.reply(
+            await target_message.reply(
                 "\n".join(f"Removed link trackers: {link}" for link in cleaned_links),
                 allowed_mentions=discord.AllowedMentions.none(),
                 mention_author=False,
@@ -229,7 +235,7 @@ class linkCleanerCog(commands.Cog):
         perms = message.channel.permissions_for(message.guild.me)
         if perms.manage_messages:  # only suppress if server settings actually grant us the permission
             try:
-                await message.edit(suppress=True)
+                await target_message.edit(suppress=True)
             except (discord.Forbidden, discord.HTTPException) as e:
                 print(f"Error suppressing original embed: {e}")
 

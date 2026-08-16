@@ -272,8 +272,14 @@ class LinkEmbeds(commands.Cog):
             embed_domain = urlsplit(fixed).netloc
             lines.append(f"[{name} link](<{cleaned}>) • [Embed via {embed_domain}]({fixed})")
 
+        target_message = message
+        if common.get_guild_setting(message.guild.id, "tupperbox_wait_enabled", False):
+            target_message = await common.wait_for_tupperbox_proxy(message)
+            if target_message is None:  # original was deleted (presumably by Tupperbox) and no matching webhook message showed up
+                return
+
         try:
-            await message.reply("\n".join(lines), allowed_mentions=discord.AllowedMentions.none(), mention_author=False)
+            await target_message.reply("\n".join(lines), allowed_mentions=discord.AllowedMentions.none(), mention_author=False)
         except (discord.Forbidden, discord.HTTPException) as e:
             print(f"Error replying with fixed embed links: {e}")
 
@@ -281,7 +287,7 @@ class LinkEmbeds(commands.Cog):
             perms = message.channel.permissions_for(message.guild.me)
             if perms.manage_messages:
                 try:
-                    await message.edit(suppress=True)
+                    await target_message.edit(suppress=True)
                 except (discord.Forbidden, discord.HTTPException) as e:
                     print(f"Error suppressing original embed: {e}")
 
