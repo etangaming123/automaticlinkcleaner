@@ -260,8 +260,17 @@ class LinkEmbeds(commands.Cog):
         if not matches:
             return
 
+        # resolve the Tupperbox wait (if enabled) before any other awaits - Tupperbox's
+        # delete+repost can be fast enough to race ahead of us otherwise, e.g. if we wait
+        # on the typing indicator first, so register the wait synchronously right away
+        target_message = message
+        if common.get_guild_setting(message.guild.id, "tupperbox_wait_enabled", False):
+            target_message = await common.wait_for_tupperbox_proxy(message)
+            if target_message is None:  # original was deleted (presumably by Tupperbox) and no matching webhook message showed up
+                return
+
         try:
-            await message.channel.typing()
+            await target_message.channel.typing()
         except (discord.Forbidden, discord.HTTPException) as e:
             print(f"Error showing typing indicator: {e}")
 
@@ -271,12 +280,6 @@ class LinkEmbeds(commands.Cog):
             name = PLATFORMS[platform_key]["display_name"]
             embed_domain = urlsplit(fixed).netloc
             lines.append(f"[{name} link](<{cleaned}>) • [Embed via {embed_domain}]({fixed})")
-
-        target_message = message
-        if common.get_guild_setting(message.guild.id, "tupperbox_wait_enabled", False):
-            target_message = await common.wait_for_tupperbox_proxy(message)
-            if target_message is None:  # original was deleted (presumably by Tupperbox) and no matching webhook message showed up
-                return
 
         try:
             await target_message.reply("\n".join(lines), allowed_mentions=discord.AllowedMentions.none(), mention_author=False)
